@@ -76,12 +76,12 @@ If you're on a debian/ubuntu based host with a custom or downstream distro provi
 
 With regards to arm32/64 devices, Raspberry Pi 2-4 running the [official ubuntu images](https://ubuntu.com/download/raspberry-pi) or Raspbian Buster are supported out of the box. For all other devices and OSes, you can try installing the kernel headers on the host, and mapping `/usr/src:/usr/src` and it may just work (no guarantees).
 
-This can be run as a server or a client, based on the parameters used. 
+This can be run as a server or a client, based on the parameters used.
 
 ## Server Mode
 If the environment variable `PEERS` is set to a number or a list of strings separated by comma, the container will run in server mode and the necessary server and peer/client confs will be generated. The peer/client config qr codes will be output in the docker log. They will also be saved in text and png format under `/config/peerX` in case `PEERS` is a variable and an integer or `/config/peer_X` in case a list of names was provided instead of an integer.
 
-Variables `SERVERURL`, `SERVERPORT`, `INTERNAL_SUBNET` and `PEERDNS` are optional variables used for server mode. Any changes to these environment variables will trigger regeneration of server and peer confs. Peer/client confs will be recreated with existing private/public keys. Delete the peer folders for the keys to be recreated along with the confs.
+Variables `SERVERURL`, `SERVERPORT`, `INTERNAL_SUBNET_IPV4`, `INTERNAL_SUBNET_IPV6` and `PEERDNS` are optional variables used for server mode. Any changes to these environment variables will trigger regeneration of server and peer confs. Peer/client confs will be recreated with existing private/public keys. Delete the peer folders for the keys to be recreated along with the confs.
 
 To add more peers/clients later on, you increment the `PEERS` environment variable or add more elements to the list and recreate the container.
 
@@ -90,7 +90,7 @@ To display the QR codes of active peers again, you can use the following command
 The templates used for server and peer confs are saved under `/config/templates`. Advanced users can modify these templates and force conf generation by deleting `/config/wg0.conf` and restarting the container.
 
 ## Client Mode
-Do not set the `PEERS` environment variable. Drop your client conf into the config folder as `/config/wg0.conf` and start the container. 
+Do not set the `PEERS` environment variable. Drop your client conf into the config folder as `/config/wg0.conf` and start the container.
 
 If you get IPv6 related errors in the log and connection cannot be established, edit the `AllowedIPs` line in your peer/client wg0.conf to include only `0.0.0.0/0` and not `::/0`; and restart the container.
 
@@ -154,7 +154,8 @@ services:
       - SERVERPORT=51820 #optional
       - PEERS=1 #optional
       - PEERDNS=auto #optional
-      - INTERNAL_SUBNET=10.13.13.0 #optional
+      - INTERNAL_SUBNET_IPV4=10.13.13.0 #optional
+      - INTERNAL_SUBNET_IPV6=fd42:42:42::0 #optional
       - ALLOWEDIPS=0.0.0.0/0 #optional
       - LOG_CONFS=true #optional
     volumes:
@@ -181,7 +182,8 @@ docker run -d \
   -e SERVERPORT=51820 `#optional` \
   -e PEERS=1 `#optional` \
   -e PEERDNS=auto `#optional` \
-  -e INTERNAL_SUBNET=10.13.13.0 `#optional` \
+  -e INTERNAL_SUBNET_IPV4=10.13.13.0 `#optional` \
+  -e INTERNAL_SUBNET_IPV6=fd42:42:42::0 `#optional` \
   -e ALLOWEDIPS=0.0.0.0/0 `#optional` \
   -e LOG_CONFS=true `#optional` \
   -p 51820:51820/udp \
@@ -206,7 +208,8 @@ Container images are configured using parameters passed at runtime (such as thos
 | `-e SERVERPORT=51820` | External port for docker host. Used in server mode. |
 | `-e PEERS=1` | Number of peers to create confs for. Required for server mode. Can also be a list of names: `myPC,myPhone,myTablet` (alphanumeric only) |
 | `-e PEERDNS=auto` | DNS server set in peer/client configs (can be set as `8.8.8.8`). Used in server mode. Defaults to `auto`, which uses wireguard docker host's DNS via included CoreDNS forward. |
-| `-e INTERNAL_SUBNET=10.13.13.0` | Internal subnet for the wireguard and server and peers (only change if it clashes). Used in server mode. |
+| `-e INTERNAL_SUBNET_IPV4=10.13.13.0` | Internal IPv4 subnet for the wireguard and server and peers (only change if it clashes). Used in server mode. |
+| `-e INTERNAL_SUBNET_IPV6=fd42:42:42::0` | Internal IPv6 subnet for the wireguard and server and peers (only change if it clashes). Used in server mode. |
 | `-e ALLOWEDIPS=0.0.0.0/0` | The IPs/Ranges that the peers will be able to reach using the VPN connection. If not specified the default value is: '0.0.0.0/0, ::0/0' This will cause ALL traffic to route through the VPN, if you want split tunneling, set this to only the IPs you would like to use the tunnel AND the ip of the server's WG ip, such as 10.13.13.1. |
 | `-e LOG_CONFS=true` | Generated QR codes will be displayed in the docker log. Set to `false` to skip log output. |
 | `-v /config` | Contains all relevant configuration files. |
@@ -305,6 +308,8 @@ Below are the instructions for updating containers:
 
 ## Building locally
 
+### Docker
+
 If you want to make local modifications to these images for development purposes or just to customize the logic:
 
 ```bash
@@ -324,8 +329,33 @@ docker run --rm --privileged multiarch/qemu-user-static:register --reset
 
 Once registered you can define the dockerfile to use with `-f Dockerfile.aarch64`.
 
+### Podman
+
+If you want to make local modifications to these images for development purposes or just to customize the logic:
+
+```bash
+git clone https://github.com/linuxserver/docker-wireguard.git
+cd docker-wireguard
+podman build \
+  --no-cache \
+  --pull \
+  --build-arg BUILD_DATE=20221027 \
+  --build-arg VERSION=1.0 \
+  --build-arg WIREGUARD_RELEASE=v1.0.20210914 \
+  --tag lscr.io/linuxserver/wireguard:latest -f Dockerfile .
+```
+
+The ARM variants can be built on x86_64 hardware using `multiarch/qemu-user-static`
+
+```bash
+podman run --rm --privileged multiarch/qemu-user-static:register --reset
+```
+
+Once registered you can define the dockerfile to use with `-f Dockerfile.aarch64`.
+
 ## Versions
 
+* **<UNRELEASE>** - Add support IPv6 from `INTERNAL_SUBNET_IPV6` and rename `INTERNAL_SUBNET` to `INTERNAL_SUBNET_IPV4`.
 * **26.10.22:** - Better handle unsupported peer names. Improve logging.
 * **12.10.22:** - Add Alpine branch. Optimize wg and coredns services.
 * **09.10.22:** - Switch back to iptables-legacy due to issues on some hosts.
